@@ -33,15 +33,30 @@ export function sinc(x) {
   return Math.sin(x) / x;
 }
 
-/** Relative screen intensity in [0, 1], under sin(theta) ≈ y/L. */
-export function intensityAt(yMm, params = DEFAULT_PARAMS) {
-  if (!Number.isFinite(yMm)) return 0;
+/**
+ * Propagation-direction view of the fixed far-field, small-angle model.
+ * depthFraction is z/L, clamped to [0.04, 1]; yEff = yMm/(z/L).
+ * This is not an exact near-slit field or a simulated propagation delay.
+ * amplitude is a signed far-field envelope, excluding a common carrier.
+ * Distinguishable paths have no combined coherent amplitude (null).
+ */
+export function fieldAt(yMm, depthFraction, params = DEFAULT_PARAMS) {
   const g = geometry(params);
-  const beta = Math.PI * g.slitWidth * yMm / (g.wavelength * g.distance);
-  const envelope = sinc(beta) ** 2;
-  if (g.mode === 'single' || g.mode === 'observed') return clamp(envelope, 0, 1);
-  const alpha = Math.PI * g.separation * yMm / (g.wavelength * g.distance) + g.phase / 2;
-  return clamp(envelope * Math.cos(alpha) ** 2, 0, 1);
+  const z = clamp(Number.isNaN(depthFraction) || depthFraction === undefined ? 1 : depthFraction, 0.04, 1);
+  const yEff = yMm / z;
+  if (!Number.isFinite(yEff)) return { amplitude: g.mode === 'observed' ? null : 0, intensity: 0, envelope: 0 };
+  const beta = Math.PI * g.slitWidth * yEff / (g.wavelength * g.distance);
+  const slitAmplitude = sinc(beta);
+  const envelope = clamp(slitAmplitude ** 2, 0, 1);
+  if (g.mode === 'observed') return { amplitude: null, intensity: envelope, envelope };
+  const alpha = Math.PI * g.separation * yEff / (g.wavelength * g.distance) + g.phase / 2;
+  const amplitude = g.mode === 'single' ? slitAmplitude : slitAmplitude * Math.cos(alpha);
+  return { amplitude, intensity: clamp(amplitude ** 2, 0, 1), envelope };
+}
+
+/** Relative screen intensity: exactly the field at depthFraction = 1. */
+export function intensityAt(yMm, params = DEFAULT_PARAMS) {
+  return fieldAt(yMm, 1, params).intensity;
 }
 
 /** Spacing of adjacent interference maxima (without envelope correction). */
